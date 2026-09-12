@@ -5,6 +5,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { SelverClient } from './selver/client.js';
 import { registerSearchTools } from './tools/search.js';
 import { registerCartTools } from './tools/cart.js';
+import { FileCartStore } from './storage/cart-store.js';
 
 const server = new McpServer({
   name: 'selver-mcp',
@@ -14,7 +15,8 @@ const server = new McpServer({
 const client = new SelverClient();
 
 registerSearchTools(server, client);
-registerCartTools(server, client);
+// stdio: one process, one person — a file on this machine is the right store.
+registerCartTools(server, client, new FileCartStore());
 
 async function main() {
   const transport = new StdioServerTransport();

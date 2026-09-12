@@ -396,3 +396,51 @@ src/
 └── storage/
     └── cart-token.ts   # Read/write ~/.selver-mcp/cart.json
 ```
+
+## Running over HTTP (use it from other systems)
+
+The stdio server talks only to the process that launched it, which is fine for a
+local Claude Desktop and useless for anything else. `dist/http.js` serves the same
+tools over **MCP Streamable HTTP** so a cloud agent, another machine, or a second
+person's client can use it.
+
+```
+npm run build
+SELVER_MCP_TOKEN=$(openssl rand -hex 32) PORT=8080 npm run start:http
+```
+
+Or as a container: `docker build -t selver-mcp . && docker run -e SELVER_MCP_TOKEN=... -p 8080:8080 selver-mcp`
+
+| Endpoint | |
+|---|---|
+| `POST /mcp` | JSON-RPC — `initialize`, `tools/list`, `tools/call`. Requires `Authorization: Bearer $SELVER_MCP_TOKEN` |
+| `GET /health` | Liveness. Unauthenticated, and deliberately reveals nothing about configuration |
+
+### Two properties worth understanding before you deploy it
+
+**It fails closed.** With `SELVER_MCP_TOKEN` unset, every `/mcp` request gets `503`.
+An unset secret must never mean "open to everyone" — this endpoint can put items in
+a shopping cart.
+
+**It is stateless, and that is what makes it shareable.** No `Mcp-Session-Id` is
+issued, no SSE stream is offered, and the server remembers nothing between calls —
+including your cart. Each caller carries its own **`cart_token`**:
+
+1. Call `add_to_cart` with no `cart_token`; a new cart is created and its token is
+   returned in the response.
+2. Pass that `cart_token` on every later `add_to_cart` / `view_cart` /
+   `remove_from_cart`.
+
+Skip step 2 and each call creates a fresh cart. That is deliberate: the alternative —
+one shared cart on the server — would put two callers' shopping in the same basket
+and interleave concurrent edits. The local stdio server still remembers your cart in
+`~/.selver-mcp/cart.json`, so nothing changes for existing single-user setups.
+
+### Still true over HTTP
+
+- **`view_cart` totals exclude VAT.** Selver's `cart/pull` API returns pre-VAT prices
+  while checkout adds ~24%. The response flags this as `total_excludes_vat`. Never
+  present a subtotal as final before the real checkout page.
+- **A guest cart is invisible in the browser until synced** — see the browser-sync
+  note above. Adding server-side does not make items appear in an open selver.ee tab.
+- Nothing here logs in, holds credentials, or pays for anything.
