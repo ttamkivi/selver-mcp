@@ -411,6 +411,36 @@ SELVER_MCP_TOKEN=$(openssl rand -hex 32) PORT=8080 npm run start:http
 
 Or as a container: `docker build -t selver-mcp . && docker run -e SELVER_MCP_TOKEN=... -p 8080:8080 selver-mcp`
 
+### Deploying it
+
+Any container host works. `fly.toml` is included because it is the least setup
+for one stateless container with one secret:
+
+```
+fly launch --no-deploy --copy-config --name selver-mcp
+fly secrets set SELVER_MCP_TOKEN="$(openssl rand -hex 32)"
+fly deploy
+```
+
+Then confirm it can actually reach Selver — the one thing a build cannot tell you:
+
+```
+curl -sS -X POST https://<your-app>.fly.dev/mcp \
+  -H "Authorization: Bearer $SELVER_MCP_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_products","arguments":{"query":"lõhefilee","limit":2}}}'
+```
+
+Real products back means it works. A response containing `error` and a
+`fallback_url` means the host cannot reach selver.ee — the tools degrade
+gracefully rather than crashing, so this is the check that tells you.
+
+The config scales to zero when idle. That is safe here precisely because the
+server is stateless: a cold start loses nothing, since there was never anything
+to lose.
+
+
 | Endpoint | |
 |---|---|
 | `POST /mcp` | JSON-RPC — `initialize`, `tools/list`, `tools/call`. Requires `Authorization: Bearer $SELVER_MCP_TOKEN` |
